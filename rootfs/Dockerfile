@@ -41,9 +41,11 @@ RUN apk update \
 
 COPY --chown=www-data:www-data etc /etc
 
-COPY --chown=www-data:www-data bin/${TARGETARCH}/dbg /
-COPY --chown=www-data:www-data bin/${TARGETARCH}/nginx-ingress-controller /
-COPY --chown=www-data:www-data bin/${TARGETARCH}/wait-shutdown /
+COPY --chown=www-data:www-data bin.bak/${TARGETARCH}/dbg /
+COPY --chown=www-data:www-data bin.bak/${TARGETARCH}/nginx-ingress-controller /
+COPY --chown=www-data:www-data bin.bak/${TARGETARCH}/wait-shutdown /
+COPY --chown=www-data:www-data ingress-controller.bak /ingress-controller/
+COPY --chown=www-data:www-data lua.bak /etc/nginx/lua.bak/
 
 # Fix permission during the build to avoid issues at runtime
 # with volumes (custom templates)
@@ -55,6 +57,7 @@ RUN bash -xeu -c ' \
     /var/log \
     /var/log/nginx \
     /tmp/nginx \
+    /usr/local/openresty \
   ); \
   for dir in "${writeDirs[@]}"; do \
     mkdir -p ${dir}; \
@@ -63,7 +66,12 @@ RUN bash -xeu -c ' \
   # LD_LIBRARY_PATH does not work so below is needed for  opentelemetry/other modules
   # Put libs of newer modules under `/modules_mount/<other>/lib` and add that path below
   # Could get complicated arch specific paths become a need
-  && echo "/lib:/usr/lib:/usr/local/lib:/modules_mount/otel/lib" > /etc/ld-musl-x86_64.path
+  && echo "/lib:/usr/lib:/usr/local/lib:/modules_mount/otel/lib" > /etc/ld-musl-x86_64.path \
+  # 拷贝新版本Lua到0.26
+  # && cp -prf /etc/nginx/lua/lua_ingress.lua /etc/nginx/lua.bak \ 
+  # && cp -prf /etc/nginx/lua/global_throttle.lua /etc/nginx/lua.bak \ 
+  && rm -rf /etc/nginx/lua \
+  && mv /etc/nginx/lua.bak /etc/nginx/lua
   
 
 RUN apk add --no-cache libcap \
@@ -80,7 +88,9 @@ USER www-data
 
 # Create symlinks to redirect nginx logs to stdout and stderr docker log collector
 RUN  ln -sf /dev/stdout /var/log/nginx/access.log \
-  && ln -sf /dev/stderr /var/log/nginx/error.log
+  && ln -sf /dev/stderr /var/log/nginx/error.log \
+  && mkdir -p /usr/local/openresty/nginx/sbin \
+  && ln -s /usr/local/nginx/sbin/nginx /usr/local/openresty/nginx/sbin/nginx
 
 ENTRYPOINT ["/usr/bin/dumb-init", "--"]
 
